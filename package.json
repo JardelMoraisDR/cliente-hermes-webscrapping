@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@antiadmin/anticaptchaofficial": "^1.0.29",
     "express": "^4.18.2",
     "nodemon": "^2.0.22",
     "selenium-webdriver": "^4.8.2"

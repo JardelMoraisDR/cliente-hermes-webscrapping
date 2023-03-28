@@ -1,11 +1,18 @@
 const express = require('express');
+const ac = require('@antiadmin/anticaptchaofficial');
 const { Builder, By, until } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const currentDate = new Date();
+
+// Define a chave da API do Anti-Captcha
+ac.setAPIKey('6a1719f10908bb954dbc1694e22126b8');
+// ac.setSoftId(0);
 
 const fixedUrl = 'https://www.diariomunicipal.com.br/amupe/pesquisar?busca_avancada[__paper]=1&busca_avancada[entidadeUsuaria]={!MUNICIPIO!}&busca_avancada[nome_orgao]=&busca_avancada[titulo]=&busca_avancada[texto]=&busca_avancada[dataInicio]={!DATAINICIO!}&busca_avancada[dataFim]={!DATAFIM!}'; // Substitua pela URL fixada no código
+const paramAdd = '&g-recaptcha-response={!TOKEN!}&busca_avancada%5B_token%5D=5IA5wYS0R07946saEn3KN5iRrbFwqkYCs4ghs8HQx5s'
 
 async function retryOperation(operation, retries = 3) {
     try {
@@ -21,8 +28,9 @@ async function retryOperation(operation, retries = 3) {
 async function extractDataFromCurrentPage(driver){
         
         const data = [];
-        const tableRows = await driver.findElements(By.css('#datatable tbody tr'));
-        
+        // const tableRows = await driver.findElements(By.css('#datatable tbody tr'));
+        const tableRows = await driver.executeScript('return document.querySelectorAll("#datatable tbody tr");');
+
         for (let i = 0; i < tableRows.length; i++) {      
             const rowData = await retryOperation(async () => {
                 const row = await driver.findElement(By.css(`#datatable tbody tr:nth-child(${i + 1})`));
@@ -33,12 +41,15 @@ async function extractDataFromCurrentPage(driver){
                 const tituloElement = await cells[1].findElement(By.tagName('a'));
                 const orgaoElement = await cells[2].findElement(By.tagName('a'));
                 const dataElement = await cells[3].findElement(By.tagName('a'));
+                const linkElement = await cells[4].findElement(By.tagName('a'));
 
                 const etidade = await etidadeElement.getText();
                 const titulo = await tituloElement.getText();
                 const orgao = await orgaoElement.getText();
-                const dataCirculacao = await dataElement.getText();
-                return { etidade, titulo, orgao, dataCirculacao };
+                const dataCirculacao = await dataElement.getText();               
+                const link = await linkElement.getAttribute('href');
+                
+                return { etidade, titulo, orgao, dataCirculacao, link };
             });
             
             if(rowData){
@@ -47,6 +58,27 @@ async function extractDataFromCurrentPage(driver){
         }
 
     return data;
+
+}
+
+async function getTokenAntiCaptcha(url, noToken){
+    
+    if(noToken === '0'){
+      return;
+    }
+
+    await ac.getBalance()
+    .then(balance => console.log("[" + currentDate.toLocaleString() + '] Saldo da conta: '+balance))
+    .catch(error => console.log("[" + currentDate.toLocaleString() + '] an error with API key: '+error));
+
+    // Solicita o token do Anti-Captcha para resolver o reCAPTCHA V2
+    console.log("[" + currentDate.toLocaleString() + '] Resolvendo recaptcha ...');
+    const token = await ac.solveRecaptchaV2Proxyless(
+      url,
+      '6LeDwWMUAAAAALhHrdTL_WR7iuHBdYAjtPn8VOaW'
+    );
+
+    return token;
 
 }
 
@@ -60,8 +92,12 @@ function obterDataAtual(){
     return `${dia}/${mes}/${ano}`;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 app.get('/consultar', async (req, res) => {
-  const { codMunicipio, dataInicio, dataFim } = req.query;
+  const { codMunicipio, dataInicio, dataFim, noToken, noHeadless } = req.query;
 
   var url = fixedUrl;
   if(codMunicipio){
@@ -87,31 +123,56 @@ app.get('/consultar', async (req, res) => {
   }
 
   let options = new chrome.Options();
-    options = options//.headless()
+
+  if(noHeadless === '0'){
+    options = options
     .addArguments('--disable-gpu')
-    .addArguments('--ignore-certificate-errors');
+    .addArguments('--ignore-certificate-errors')
+    .addArguments('--window-size=1360,1000'); 
+    console.log("[" + currentDate.toLocaleString() + "] Sem headless");
+  }else{
+    options = options
+    .addArguments('--headless')
+    .addArguments('--disable-gpu')
+    .addArguments('--ignore-certificate-errors')
+    .addArguments(`--user-agent=\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36\"`)
+    .addArguments('--window-size=1360,1000'); 
+    console.log("[" + currentDate.toLocaleString() + "] Com headless");
+  }
     
   const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
 
   try {
-    await driver.get(url);
+
+    const token = await getTokenAntiCaptcha(url, noToken);
+    console.log("[" + currentDate.toLocaleString() + '] Token resultado:' + token); 
+
+    var urlTemp = url;
+    var parameters = paramAdd;
+
+    urlTemp = urlTemp + parameters.replace('{!TOKEN!}', token);
+    
+    await driver.get(urlTemp);
+    
+    await driver.executeScript(`
+      document.querySelector('#g-recaptcha-response').value = '${token}';
+      document.querySelector('#g-recaptcha-response').innerHTML = '${token}';
+    `); 
+
+    await sleep(5000);
 
     const btnEnviar = await driver.findElement(By.id('busca_avancada_Enviar'));
     await btnEnviar.click();
-
-    const allData = [];
+    
+    const allData = [];    
     while(true){
 
         const currentPageData = await retryOperation(async () => {           
-            // Aguarde até que a tabela esteja presente na página
-            await driver.wait(until.elementLocated(By.id('datatable')), 10000);
-
-            const currentPageTable = await driver.findElement(By.css("#datatable"));
-            return await extractDataFromCurrentPage(currentPageTable);
+            return await extractDataFromCurrentPage(driver);
         });
         
         allData.push(currentPageData);
-
+        
         await driver.wait(until.elementLocated(By.id('datatable_next')), 10000);
 
         const btnProximo = await driver.findElement(By.id('datatable_next'));
@@ -124,13 +185,13 @@ app.get('/consultar', async (req, res) => {
         if(hasTargetClass){
             break;
         }
-
-        await btnProximo.click();
+      
+        await sleep(1000);
+        await driver.executeScript('arguments[0].click();', btnProximo);
 
     }
 
-    res.json(allData);
-
+    res.json(allData.flat());
   } catch (error) {
     res.status(500).send(`Erro ao extrair dados: ${error.message}`);
   } finally {
@@ -139,6 +200,5 @@ app.get('/consultar', async (req, res) => {
 });
 
 app.listen(port, () => {
-  const currentDate = new Date();
   console.log("[" + currentDate.toLocaleString() + `] Servidor rodando em http://localhost:${port}`);
 });
