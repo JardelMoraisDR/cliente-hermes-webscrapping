@@ -37,19 +37,19 @@ async function extractDataFromCurrentPage(driver){
 
                 const cells = await row.findElements(By.tagName('td'));
 
-                const etidadeElement = await cells[0].findElement(By.tagName('a'));
+                const entidadeElement = await cells[0].findElement(By.tagName('a'));
                 const tituloElement = await cells[1].findElement(By.tagName('a'));
                 const orgaoElement = await cells[2].findElement(By.tagName('a'));
                 const dataElement = await cells[3].findElement(By.tagName('a'));
                 const linkElement = await cells[4].findElement(By.tagName('a'));
 
-                const etidade = await etidadeElement.getText();
+                const entidade = await entidadeElement.getText();
                 const titulo = await tituloElement.getText();
                 const orgao = await orgaoElement.getText();
                 const dataCirculacao = await dataElement.getText();               
                 const link = await linkElement.getAttribute('href');
                 
-                return { etidade, titulo, orgao, dataCirculacao, link };
+                return { entidade, titulo, orgao, dataCirculacao, link };
             });
             
             if(rowData){
