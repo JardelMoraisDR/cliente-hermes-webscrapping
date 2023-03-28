@@ -1,16 +1,26 @@
 lockfileVersion: 5.4
 
 specifiers:
+  '@antiadmin/anticaptchaofficial': ^1.0.29
   express: ^4.18.2
   nodemon: ^2.0.22
   selenium-webdriver: ^4.8.2
 
 dependencies:
+  '@antiadmin/anticaptchaofficial': 1.0.29
   express: 4.18.2
   nodemon: 2.0.22
   selenium-webdriver: 4.8.2
 
 packages:
+
+  /@antiadmin/anticaptchaofficial/1.0.29:
+    resolution: {integrity: sha512-3D+vpTJWuuTV77Bv/blX67VhxJtjp5GEqvVUXsNO2wb1OgjCcgCs1HvjVhD9/HY5H5ZtYgBxYPZXy+FF2gzBkA==}
+    dependencies:
+      axios: 0.21.4
+    transitivePeerDependencies:
+      - debug
+    dev: false
 
   /abbrev/1.1.1:
     resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
@@ -34,6 +44,14 @@ packages:
 
   /array-flatten/1.1.1:
     resolution: {integrity: sha512-PCVAQswWemu6UdxsDFFX/+gVeYqKAod3D3UVm91jHwynguOwAvYPhx8nNlM++NqRcK6CxxpUafjmhIdKiHibqg==}
+    dev: false
+
+  /axios/0.21.4:
+    resolution: {integrity: sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==}
+    dependencies:
+      follow-redirects: 1.15.2
+    transitivePeerDependencies:
+      - debug
     dev: false
 
   /balanced-match/1.0.2:
@@ -245,6 +263,16 @@ packages:
       unpipe: 1.0.0
     transitivePeerDependencies:
       - supports-color
+    dev: false
+
+  /follow-redirects/1.15.2:
+    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
+    engines: {node: '>=4.0'}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
     dev: false
 
   /forwarded/0.2.0:
