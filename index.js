@@ -154,10 +154,10 @@ app.get('/consultar', async (req, res) => {
     
     await driver.get(urlTemp);
     
-    await driver.executeScript(`
-      document.querySelector('#g-recaptcha-response').value = '${token}';
-      document.querySelector('#g-recaptcha-response').innerHTML = '${token}';
-    `); 
+    // await driver.executeScript(`
+    //   document.querySelector('#g-recaptcha-response').value = '${token}';
+    //   document.querySelector('#g-recaptcha-response').innerHTML = '${token}';
+    // `); 
 
     await sleep(5000);
 
