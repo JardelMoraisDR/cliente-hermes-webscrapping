@@ -123,18 +123,7 @@ app.get('/consultar', async (req, res) => {
     }
 
     const browserOptions = {
-        headless: noHeadless !== '0'/*,
-        defaultViewport: {
-            width: 1360,
-            height: 1000,
-        },
-        args: [
-            '--disable-gpu',
-            '--ignore-certificate-errors',
-            '--no-sandbox',
-            '--disable-setuid-sandbox'
-        ],
-        ignoreDefaultArgs: ["--hide-scrollbars"]*/
+        headless: noHeadless !== '0'
     };
 
     const browser = await puppeteer.launch(browserOptions);
@@ -142,12 +131,12 @@ app.get('/consultar', async (req, res) => {
     
     var allData = [];
     var token;
-    var tentativas = 1;
+    var tentativas = 2;
     var limiteTentativas = 3;
     try {
         while(tentativas <= limiteTentativas){
-            if(tentativas === 2){
-                token = await getTokenAntiCaptcha("https://www.diariomunicipal.com.br/amupe/pesquisar", noToken);
+            if(noToken != '0' && tentativas === 2){
+                token = await getTokenAntiCaptcha(url, noToken);
                 console.log("[" + currentDate.toLocaleString() + '] Token resultado:' + token);
             }
             
@@ -162,17 +151,22 @@ app.get('/consultar', async (req, res) => {
     
             if(noToken != '0' && tentativas === 2){
                 await sleep(2000);
-                const idElemento = 'g-recaptcha-response';
+
                 const novoValor = token;
                 const iframesList = await page.frames();
                 // Percorre cada iframe na página
-                for (const iframe of iframesList) {
-                    // Verifica se o elemento com o ID especificado existe dentro do iframe
-                    const elemento = await iframe.$(`#${idElemento}`);
-                    if (elemento) {
-                        // Atualiza o valor do elemento com o novo valor
-                        await iframe.$eval(`#${idElemento}`, (el, valor) => el.value = valor, novoValor);
-                        console.log(`O elemento com o ID "${idElemento}" foi atualizado no iframe "${iframe.name()}"`);
+                for(const idElemento of ['g-recaptcha-response-1', 'g-recaptcha-response']){
+                    for (const iframe of iframesList) {
+                        // Verifica se o elemento com o ID especificado existe dentro do iframe
+                        const elemento = await iframe.$(`#${idElemento}`);
+                        if (elemento) {
+                            // Atualiza o valor do elemento com o novo valor
+                            await iframe.$eval(`#${idElemento}`, (el, novoHTML) => {
+                                el.innerHTML = novoHTML;
+                              }, novoValor);
+                              
+                            console.log(`O elemento com o ID "${idElemento}" foi atualizado no iframe "${iframe.name()}"`);
+                        }
                     }
                 }
             }
@@ -190,20 +184,24 @@ app.get('/consultar', async (req, res) => {
 
             while (true) {
     
+                console.log("Obtendo dados da página...");
                 const currentPageData = await retryOperation(async () => {
                     return await extractDataFromCurrentPage(page);
                 });
                 
-                if(typeof allData !== 'undefined' && currentPageData.length > 0){
+                if(typeof currentPageData !== 'undefined' && currentPageData.length > 0){
                     allData.push(currentPageData);
                 }else{
+                    tentativas++;
                     break;
                 }
 
-                if (typeof allData !== 'undefined' && (allData.length <= 0 || allData[0].length <= 0)) {
-                    allData = [];
-                    tentativas++;
-                    break;
+                if (typeof allData !== 'undefined' && typeof allData[0] !== 'undefined') {
+                    if(allData.length <= 0 || allData[0].length <= 0){
+                        allData = [];
+                        tentativas++;
+                        break;   
+                    }
                 }
     
                 const hasClass = await page.evaluate((selector, className) => {
@@ -221,12 +219,15 @@ app.get('/consultar', async (req, res) => {
 
             }
 
-            if (typeof allData !== 'undefined' && (allData.length > 0 || allData[0].length > 0)) {
-                tentativas++;
-                break;
+            if (typeof allData !== 'undefined' && typeof allData[0] !== 'undefined') {
+                if(allData.length > 0 || allData[0].length > 0){
+                    tentativas++;
+                    break;
+                }
             }
                 
         }
+        console.log(allData.flat());
         res.json(allData.flat());
     } catch (error) {
         res.status(500).send(`Erro ao extrair dados: ${error.message}`);
