@@ -1,7 +1,6 @@
 const express = require('express');
 const ac = require('@antiadmin/anticaptchaofficial');
-const { Builder, By, until } = require('selenium-webdriver');
-const chrome = require('selenium-webdriver/chrome');
+const puppeteer = require('puppeteer');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,49 +15,44 @@ const paramAdd = '&g-recaptcha-response={!TOKEN!}&busca_avancada%5B_token%5D=5IA
 
 async function retryOperation(operation, retries = 3) {
     try {
-      return await operation();
+        return await operation();
     } catch (error) {
-      if (retries <= 0) {
-        throw error;
-      }
-      return retryOperation(operation, retries - 1);
-    }
-}  
-
-async function extractDataFromCurrentPage(driver){
-        
-        const data = [];
-        // const tableRows = await driver.findElements(By.css('#datatable tbody tr'));
-        const tableRows = await driver.executeScript('return document.querySelectorAll("#datatable tbody tr");');
-
-        for (let i = 0; i < tableRows.length; i++) {      
-            const rowData = await retryOperation(async () => {
-                const row = await driver.findElement(By.css(`#datatable tbody tr:nth-child(${i + 1})`));
-
-                const cells = await row.findElements(By.tagName('td'));
-
-                const entidadeElement = await cells[0].findElement(By.tagName('a'));
-                const tituloElement = await cells[1].findElement(By.tagName('a'));
-                const orgaoElement = await cells[2].findElement(By.tagName('a'));
-                const dataElement = await cells[3].findElement(By.tagName('a'));
-                const linkElement = await cells[4].findElement(By.tagName('a'));
-
-                const entidade = await entidadeElement.getText();
-                const titulo = await tituloElement.getText();
-                const orgao = await orgaoElement.getText();
-                const dataCirculacao = await dataElement.getText();               
-                const link = await linkElement.getAttribute('href');
-                
-                return { entidade, titulo, orgao, dataCirculacao, link };
-            });
-            
-            if(rowData){
-                data.push(rowData);
-            }
+        if (retries <= 0) {
+            throw error;
         }
+        return retryOperation(operation, retries - 1);
+    }
+}
+
+async function extractDataFromCurrentPage(page) {
+    const data = [];
+    const tableRows = await page.$$('#datatable tbody tr');
+
+    for (let i = 0; i < tableRows.length; i++) {
+        const rowData = await retryOperation(async () => {
+            const row = tableRows[i];
+
+            const entidadeElement = await row.$eval('td:nth-child(1) a', a => a.textContent);
+            const tituloElement = await row.$eval('td:nth-child(2) a', a => a.textContent);
+            const orgaoElement = await row.$eval('td:nth-child(3) a', a => a.textContent);
+            const dataElement = await row.$eval('td:nth-child(4) a', a => a.textContent);
+            const linkElement = await row.$eval('td:nth-child(5) a', a => a.href);
+
+            return {
+                entidade: entidadeElement,
+                titulo: tituloElement,
+                orgao: orgaoElement,
+                dataCirculacao: dataElement,
+                link: linkElement
+            };
+        });
+
+        if (rowData) {
+            data.push(rowData);
+        }
+    }
 
     return data;
-
 }
 
 async function getTokenAntiCaptcha(url, noToken){
@@ -93,112 +87,155 @@ function obterDataAtual(){
 }
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 app.get('/consultar', async (req, res) => {
-  const { codMunicipio, dataInicio, dataFim, noToken, noHeadless } = req.query;
+    const {
+        codMunicipio,
+        dataInicio,
+        dataFim,
+        noToken,
+        noHeadless
+    } = req.query;
 
-  var url = fixedUrl;
-  if(codMunicipio){
-    url = url.replace('{!MUNICIPIO!}', codMunicipio);
-  }else{
-    url = url.replace('{!MUNICIPIO!}', '');
-  }
-
-  const dataAtual = encodeURIComponent(obterDataAtual());
-
-  if(dataInicio){
-    var dataInicioTemp = encodeURIComponent(dataInicio);
-    url = url.replace('{!DATAINICIO!}', dataInicioTemp);
-  }else{
-    url = url.replace('{!DATAINICIO!}', dataAtual);
-  }
-
-  if(dataFim){
-    var dataFimTemp = encodeURIComponent(dataFim);
-    url = url.replace('{!DATAFIM!}', dataFimTemp);
-  }else{
-    url = url.replace('{!DATAFIM!}', dataAtual);
-  }
-
-  let options = new chrome.Options();
-
-  if(noHeadless === '0'){
-    options = options
-    .addArguments('--disable-gpu')
-    .addArguments('--ignore-certificate-errors')
-    .addArguments('--window-size=1360,1000'); 
-    console.log("[" + currentDate.toLocaleString() + "] Sem headless");
-  }else{
-    options = options
-    .addArguments('--headless')
-    .addArguments('--disable-gpu')
-    .addArguments('--ignore-certificate-errors')
-    .addArguments(`--user-agent=\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36\"`)
-    .addArguments('--window-size=1360,1000'); 
-    console.log("[" + currentDate.toLocaleString() + "] Com headless");
-  }
-    
-  const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
-
-  try {
-
-    const token = await getTokenAntiCaptcha(url, noToken);
-    console.log("[" + currentDate.toLocaleString() + '] Token resultado:' + token); 
-
-    var urlTemp = url;
-    var parameters = paramAdd;
-
-    urlTemp = urlTemp + parameters.replace('{!TOKEN!}', token);
-    
-    await driver.get(urlTemp);
-    
-    // await driver.executeScript(`
-    //   document.querySelector('#g-recaptcha-response').value = '${token}';
-    //   document.querySelector('#g-recaptcha-response').innerHTML = '${token}';
-    // `); 
-
-    await sleep(5000);
-
-    const btnEnviar = await driver.findElement(By.id('busca_avancada_Enviar'));
-    await btnEnviar.click();
-    
-    const allData = [];    
-    while(true){
-
-        const currentPageData = await retryOperation(async () => {           
-            return await extractDataFromCurrentPage(driver);
-        });
-        
-        allData.push(currentPageData);
-        
-        await driver.wait(until.elementLocated(By.id('datatable_next')), 10000);
-
-        const btnProximo = await driver.findElement(By.id('datatable_next'));
-
-        const elementClasses = await btnProximo.getAttribute('class');
-
-        const targetClass = 'disabled'; 
-        const hasTargetClass = elementClasses.split(' ').includes(targetClass);
-
-        if(hasTargetClass){
-            break;
-        }
-      
-        await sleep(1000);
-        await driver.executeScript('arguments[0].click();', btnProximo);
-
+    var url = fixedUrl;
+    if (codMunicipio) {
+        url = url.replace('{!MUNICIPIO!}', codMunicipio);
+    } else {
+        url = url.replace('{!MUNICIPIO!}', '');
     }
 
-    res.json(allData.flat());
-  } catch (error) {
-    res.status(500).send(`Erro ao extrair dados: ${error.message}`);
-  } finally {
-    await driver.quit();
-  }
+    const dataAtual = encodeURIComponent(obterDataAtual());
+
+    if (dataInicio) {
+        var dataInicioTemp = encodeURIComponent(dataInicio);
+        url = url.replace('{!DATAINICIO!}', dataInicioTemp);
+    } else {
+        url = url.replace('{!DATAINICIO!}', dataAtual);
+    }
+
+    if (dataFim) {
+        var dataFimTemp = encodeURIComponent(dataFim);
+        url = url.replace('{!DATAFIM!}', dataFimTemp);
+    } else {
+        url = url.replace('{!DATAFIM!}', dataAtual);
+    }
+
+    const browserOptions = {
+        headless: noHeadless !== '0'/*,
+        defaultViewport: {
+            width: 1360,
+            height: 1000,
+        },
+        args: [
+            '--disable-gpu',
+            '--ignore-certificate-errors',
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+        ],
+        ignoreDefaultArgs: ["--hide-scrollbars"]*/
+    };
+
+    const browser = await puppeteer.launch(browserOptions);
+    const page = await browser.newPage();
+    
+    var allData = [];
+    var token;
+    var tentativas = 1;
+    var limiteTentativas = 3;
+    try {
+        while(tentativas <= limiteTentativas){
+            if(tentativas === 2){
+                token = await getTokenAntiCaptcha("https://www.diariomunicipal.com.br/amupe/pesquisar", noToken);
+                console.log("[" + currentDate.toLocaleString() + '] Token resultado:' + token);
+            }
+            
+            var urlTemp = url;
+    
+            if(noToken != '0' && tentativas === 2){
+                var parameters = paramAdd;
+                urlTemp = urlTemp + parameters.replace('{!TOKEN!}', token);
+            }
+    
+            await page.goto(urlTemp);
+    
+            if(noToken != '0' && tentativas === 2){
+                await sleep(2000);
+                const idElemento = 'g-recaptcha-response';
+                const novoValor = token;
+                const iframesList = await page.frames();
+                // Percorre cada iframe na página
+                for (const iframe of iframesList) {
+                    // Verifica se o elemento com o ID especificado existe dentro do iframe
+                    const elemento = await iframe.$(`#${idElemento}`);
+                    if (elemento) {
+                        // Atualiza o valor do elemento com o novo valor
+                        await iframe.$eval(`#${idElemento}`, (el, valor) => el.value = valor, novoValor);
+                        console.log(`O elemento com o ID "${idElemento}" foi atualizado no iframe "${iframe.name()}"`);
+                    }
+                }
+            }
+             
+            await sleep(3000);
+    
+            const btnEnviar = await page.$('#busca_avancada_Enviar');
+            await btnEnviar.click();
+    
+            if (tentativas === 3) {
+                console.log("1 minuto para resolver o captcha.");
+                await sleep(60000);
+                console.log("Tempo encerrado.");
+            }
+
+            while (true) {
+    
+                const currentPageData = await retryOperation(async () => {
+                    return await extractDataFromCurrentPage(page);
+                });
+                
+                if(typeof allData !== 'undefined' && currentPageData.length > 0){
+                    allData.push(currentPageData);
+                }else{
+                    break;
+                }
+
+                if (typeof allData !== 'undefined' && (allData.length <= 0 || allData[0].length <= 0)) {
+                    allData = [];
+                    tentativas++;
+                    break;
+                }
+    
+                const hasClass = await page.evaluate((selector, className) => {
+                    const element = document.querySelector(selector);
+                    if (!element) return false; // Verifica se o elemento existe
+                    return element.classList.contains(className);
+                  }, '#datatable_next', 'disabled');
+                  
+                if (hasClass) {
+                    break;
+                } 
+                                   
+                const btnProximo = await page.$('#datatable_next');
+                await btnProximo.click();
+
+            }
+
+            if (typeof allData !== 'undefined' && (allData.length > 0 || allData[0].length > 0)) {
+                tentativas++;
+                break;
+            }
+                
+        }
+        res.json(allData.flat());
+    } catch (error) {
+        res.status(500).send(`Erro ao extrair dados: ${error.message}`);
+    } finally {
+        await browser.close();
+    }
 });
 
 app.listen(port, () => {
-  console.log("[" + currentDate.toLocaleString() + `] Servidor rodando em http://localhost:${port}`);
+    console.log("[" + currentDate.toLocaleString() + `] Servidor rodando em http://localhost:${port}`);
 });
+  
