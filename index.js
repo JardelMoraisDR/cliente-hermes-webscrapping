@@ -131,7 +131,7 @@ app.get('/consultar', async (req, res) => {
     
     var allData = [];
     var token;
-    var tentativas = 2;
+    var tentativas = 1;
     var limiteTentativas = 3;
     try {
         while(tentativas <= limiteTentativas){
